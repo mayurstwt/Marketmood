@@ -42,8 +42,8 @@
     </g>
     <circle cx="150" cy="150" r="11" fill="#f2f4f8"/>
     <circle cx="150" cy="150" r="5" fill="#181b22"/>
-    <text x="30" y="172" font-size="11" fill="#8b93a3" text-anchor="middle">Market up</text>
-    <text x="270" y="172" font-size="11" fill="#8b93a3" text-anchor="middle">Market down</text>
+    <text x="14" y="172" font-size="11" fill="#8b93a3" text-anchor="start">Market up</text>
+    <text x="286" y="172" font-size="11" fill="#8b93a3" text-anchor="end">Market down</text>
   </svg>
 
   <div class="price" id="price">--</div>
@@ -86,6 +86,19 @@ const routes = [
 ];
 
 async function fetchData() {
+  // 1) Preferred: Netlify Function on the same site (no CORS problem)
+  try {
+    const res = await fetch("/.netlify/functions/market?m=" + encodeURIComponent(key), { cache: "no-store" });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const d = await res.json();
+    if (d && d.price != null && d.prev != null) return d;
+    throw new Error("bad reply: " + JSON.stringify(d).slice(0, 120));
+  } catch (e) { window.fnError = String(e.message || e); }
+  // 2) Fallback: try Yahoo directly / via proxies
+  return fetchLive();
+}
+
+async function fetchLive() {
   let lastErr;
   for (const r of routes) {
     try {
@@ -115,8 +128,10 @@ function render(d, stale) {
   $("chg").className = "chg " + (pct > 0 ? "up" : pct < 0 ? "down" : "");
   $("verdict").textContent = VERDICTS.find(v => score >= v.min).text;
   const t = new Date(d.time).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", day: "2-digit", month: "short" });
-  const open = d.state === "REGULAR";
-  $("meta").textContent = (stale ? "Offline - showing last saved data. " : "") + (open ? "Market open" : "Market closed") + " | Data time " + t + " | Just for fun, not advice";
+  const ist = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+  const mins = ist.getHours() * 60 + ist.getMinutes();
+  const open = ist.getDay() >= 1 && ist.getDay() <= 5 && mins >= 555 && mins <= 930; // 9:15-15:30 IST
+  $("meta").textContent = (stale ? "Offline - showing last saved data [" + (window.fnError || "no reply") + "]. " : "") + (open ? "Market open" : "Market closed") + " | Data time " + t + " | Just for fun, not advice";
 }
 
 async function load() {

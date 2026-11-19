@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#0f1115">
 <title>Market Mood</title>
 <style>
-  :root { --bg:#0f1115; --card:#181b22; --text:#f2f4f8; --muted:#8b93a3; --green:#2ecc71; --red:#ff5a5f; }
+  :root { --bg:#0f1115; --card:#181b22; --text:#f2f4f8; --muted:#8b93a3; --green:#2ecc71; --red:#ff5a5f; --track:#252a35; }
   * { box-sizing: border-box; }
   body { margin:0; min-height:100vh; background:var(--bg); color:var(--text);
          font-family:-apple-system,Segoe UI,Roboto,sans-serif; display:flex; align-items:center; justify-content:center; padding:16px; }
@@ -15,16 +15,27 @@
   svg { width:100%; height:auto; margin-top:8px; }
   #needle { transform-origin:150px 150px; transition:transform 1.2s cubic-bezier(.2,.9,.3,1.2); transform:rotate(90deg); }
   .price { font-size:34px; font-weight:700; margin-top:4px; }
+  .price small { font-size:16px; font-weight:500; color:var(--muted); }
   .chg { font-size:20px; font-weight:600; margin-top:2px; }
   .verdict { font-size:20px; font-weight:600; margin:14px 6px 6px; line-height:1.3; }
+  .breadth { font-size:14px; color:var(--muted); margin:2px 6px 0; }
   .meta { font-size:12px; color:var(--muted); margin-top:8px; }
   .up { color:var(--red); } .down { color:var(--green); }
   button { margin-top:12px; background:#252a35; color:var(--text); border:0; border-radius:12px; padding:10px 18px; font-size:14px; }
+  #back { display:none; background:none; color:var(--muted); margin:0 0 4px; padding:4px 8px; font-size:13px; }
+  .rows { margin-top:16px; text-align:left; }
+  .row { display:grid; grid-template-columns:1fr auto; gap:2px 10px; align-items:center; padding:8px 6px; border-radius:10px; cursor:pointer; }
+  .row:active, .row.sel { background:#1f232c; }
+  .row .lbl { font-size:14px; }
+  .row .pct { font-size:14px; font-weight:600; font-variant-numeric:tabular-nums; }
+  .row .bar { grid-column:1 / -1; height:4px; border-radius:2px; background:var(--track); overflow:hidden; }
+  .row .fill { height:100%; border-radius:2px; transition:width .8s ease; }
 </style>
 </head>
 <body>
 <div class="card">
-  <div class="name" id="name">Nifty 50</div>
+  <button id="back">&larr; All indices combined</button>
+  <div class="name" id="name">All indices</div>
 
   <svg viewBox="0 0 300 175" aria-label="Market mood gauge">
     <defs>
@@ -49,18 +60,29 @@
   <div class="price" id="price">--</div>
   <div class="chg" id="chg">--</div>
   <div class="verdict" id="verdict">Loading...</div>
+  <div class="breadth" id="breadth"></div>
+  <div class="rows" id="rows"></div>
   <div class="meta" id="meta"></div>
   <button id="refresh">Refresh</button>
 </div>
 
 <script>
 // ---------- SETTINGS (edit these) ----------
-const MARKETS = {
-  nifty:  { symbol: "^NSEI",  label: "Nifty 50" },
-  sensex: { symbol: "^BSESN", label: "Sensex" },
-  banknifty: { symbol: "^NSEBANK", label: "Bank Nifty" }
-};
-const CLAMP_PCT = 2;            // +/-2% move = full needle swing
+// key     : must match the key in netlify/functions/market.js
+// weight  : importance in the combined score (any numbers, they are re-scaled to 100%)
+// clamp   : +/- this % move = full needle swing for THAT index
+//           (volatile indices get a bigger clamp so they don't peg the gauge)
+const INDICES = [
+  { key: "nifty",       symbol: "^NSEI",     label: "Nifty 50",       weight: 25, clamp: 2 },
+  { key: "sensex",      symbol: "^BSESN",    label: "Sensex",         weight: 15, clamp: 2 },
+  { key: "banknifty",   symbol: "^NSEBANK",  label: "Bank Nifty",     weight: 15, clamp: 2.5 },
+  { key: "niftynext50", symbol: "^NSMIDCP",  label: "Nifty Next 50",  weight: 10, clamp: 2.5 },
+  { key: "it",          symbol: "^CNXIT",    label: "Nifty IT",       weight: 10, clamp: 2.5 },
+  { key: "auto",        symbol: "^CNXAUTO",  label: "Nifty Auto",     weight: 8,  clamp: 2.5 },
+  { key: "pharma",      symbol: "^CNXPHARMA",label: "Nifty Pharma",   weight: 7,  clamp: 2.5 },
+  { key: "fmcg",        symbol: "^CNXFMCG",  label: "Nifty FMCG",     weight: 5,  clamp: 2 },
+  { key: "metal",       symbol: "^CNXMETAL", label: "Nifty Metal",    weight: 5,  clamp: 3 }
+];
 const REFRESH_MINUTES = 15;     // auto refresh interval
 // Verdicts by score (checked from top). Score 100 = very happy (market down).
 const VERDICTS = [
@@ -70,35 +92,38 @@ const VERDICTS = [
   { min: 25, text: "Slightly up. Be patient 🙁" },
   { min: 0,  text: "Market is high. Not the best time 😢" }
 ];
-// Pick market with URL: ?m=sensex  or  ?m=banknifty  (default nifty)
+// Open one index directly with the URL: ?m=sensex  or  ?m=banknifty
+// Default (no ?m=) is the combined view of all indices.
 // -------------------------------------------
 
-const key = new URLSearchParams(location.search).get("m") || "nifty";
-const M = MARKETS[key] || MARKETS.nifty;
 const $ = id => document.getElementById(id);
-$("name").textContent = M.label;
+const BY_KEY = Object.fromEntries(INDICES.map(i => [i.key, i]));
+const qm = new URLSearchParams(location.search).get("m");
+let view = BY_KEY[qm] ? qm : "all";   // "all" or an index key
+let data = null;                      // { indices: [...], failed: [...], stale: bool }
 
-const yahoo = "https://query1.finance.yahoo.com/v8/finance/chart/" + encodeURIComponent(M.symbol) + "?interval=1d&range=5d";
 const routes = [
   u => u,
   u => "https://corsproxy.io/?" + encodeURIComponent(u),
   u => "https://api.allorigins.win/raw?url=" + encodeURIComponent(u)
 ];
 
+// ---------- data ----------
 async function fetchData() {
-  // 1) Preferred: Netlify Function on the same site (no CORS problem)
+  // 1) Preferred: Netlify Function on the same site (no CORS problem), all indices in one call
   try {
-    const res = await fetch("/.netlify/functions/market?m=" + encodeURIComponent(key), { cache: "no-store" });
+    const res = await fetch("/.netlify/functions/market?m=all", { cache: "no-store" });
     if (!res.ok) throw new Error("HTTP " + res.status);
     const d = await res.json();
-    if (d && d.price != null && d.prev != null) return d;
+    if (d && Array.isArray(d.indices) && d.indices.length) return d;
     throw new Error("bad reply: " + JSON.stringify(d).slice(0, 120));
   } catch (e) { window.fnError = String(e.message || e); }
-  // 2) Fallback: try Yahoo directly / via proxies
-  return fetchLive();
+  // 2) Fallback: try Yahoo directly / via proxies, one request per index
+  return fetchLiveAll();
 }
 
-async function fetchLive() {
+async function fetchLiveOne(idx) {
+  const yahoo = "https://query1.finance.yahoo.com/v8/finance/chart/" + encodeURIComponent(idx.symbol) + "?interval=1d&range=5d";
   let lastErr;
   for (const r of routes) {
     try {
@@ -110,45 +135,134 @@ async function fetchLive() {
       const price = result.meta.regularMarketPrice;
       const prev = closes[closes.length - 2];
       if (price == null || prev == null) throw new Error("No data");
-      return { price, prev, time: result.meta.regularMarketTime * 1000, state: result.meta.marketState || "" };
+      return { key: idx.key, price, prev, time: result.meta.regularMarketTime * 1000 };
     } catch (e) { lastErr = e; }
   }
   throw lastErr;
 }
 
-function render(d, stale) {
-  const pct = (d.price - d.prev) / d.prev * 100;
-  const clamped = Math.max(-CLAMP_PCT, Math.min(CLAMP_PCT, pct));
-  const score = Math.round(50 - (clamped / CLAMP_PCT) * 50); // down => high score
+async function fetchLiveAll() {
+  const results = await Promise.allSettled(INDICES.map(fetchLiveOne));
+  const indices = [], failed = [];
+  results.forEach((r, i) => {
+    if (r.status === "fulfilled") indices.push(r.value);
+    else failed.push({ key: INDICES[i].key, error: String(r.reason && r.reason.message || r.reason) });
+  });
+  if (!indices.length) throw new Error("No index could be loaded");
+  return { indices, failed, updated: Date.now() };
+}
+
+// ---------- maths ----------
+// Score 0..100 for one move. Market down => high score (contrarian "happiness").
+function scoreFor(pct, clamp) {
+  const c = Math.max(-clamp, Math.min(clamp, pct));
+  return Math.round(50 - (c / clamp) * 50);
+}
+
+// Joins live data with the settings above. Indices missing from `d` are simply skipped,
+// and weights are re-scaled over what actually loaded.
+function enrich(d) {
+  return d.indices.filter(x => BY_KEY[x.key]).map(x => {
+    const cfg = BY_KEY[x.key];
+    const pct = (x.price - x.prev) / x.prev * 100;
+    return { ...x, label: cfg.label, weight: cfg.weight, clamp: cfg.clamp, pct, score: scoreFor(pct, cfg.clamp) };
+  });
+}
+
+function combine(rows) {
+  const w = rows.reduce((s, r) => s + r.weight, 0);
+  const score = Math.round(rows.reduce((s, r) => s + r.score * r.weight, 0) / w);
+  const pct = rows.reduce((s, r) => s + r.pct * r.weight, 0) / w;
+  const down = rows.filter(r => r.pct < 0).length;
+  const up = rows.filter(r => r.pct > 0).length;
+  return { score, pct, down, up, flat: rows.length - down - up, total: rows.length };
+}
+
+// ---------- render ----------
+function fmtPct(p) { return (p > 0 ? "+" : "") + p.toFixed(2) + "%"; }
+function dirClass(p) { return p > 0 ? "up" : p < 0 ? "down" : ""; } // contrarian colours: down = green
+
+function render(d) {
+  data = d;
+  const rows = enrich(d);
+  if (!rows.length) throw new Error("No usable data");
+  if (view !== "all" && !rows.find(r => r.key === view)) view = "all";
+
+  let score, pct, titleLine, priceLine, changeLine, breadth;
+  if (view === "all") {
+    const c = combine(rows);
+    score = c.score; pct = c.pct;
+    titleLine = "All indices (" + c.total + ")";
+    priceLine = score + '<small> / 100 happiness</small>';
+    changeLine = "Avg move " + fmtPct(c.pct);
+    breadth = c.down + " down · " + c.up + " up" + (c.flat ? " · " + c.flat + " flat" : "");
+    $("back").style.display = "none";
+  } else {
+    const r = rows.find(x => x.key === view);
+    score = r.score; pct = r.pct;
+    titleLine = r.label;
+    priceLine = r.price.toLocaleString("en-IN", { maximumFractionDigits: 2 });
+    changeLine = fmtPct(r.pct) + "  (" + (r.price - r.prev >= 0 ? "+" : "") + (r.price - r.prev).toFixed(2) + ")";
+    breadth = "Happiness score " + score + " / 100";
+    $("back").style.display = "inline-block";
+  }
+
+  $("name").textContent = titleLine;
   $("needle").style.transform = "rotate(" + (score * 1.8) + "deg)";
-  $("price").textContent = d.price.toLocaleString("en-IN", { maximumFractionDigits: 2 });
-  const sign = pct > 0 ? "+" : "";
-  $("chg").textContent = sign + pct.toFixed(2) + "%  (" + sign + (d.price - d.prev).toFixed(2) + ")";
-  // contrarian colours: market down = green (good), up = red
-  $("chg").className = "chg " + (pct > 0 ? "up" : pct < 0 ? "down" : "");
+  $("price").innerHTML = priceLine;           // built only from numbers and static text above
+  $("chg").textContent = changeLine;
+  $("chg").className = "chg " + dirClass(pct);
   $("verdict").textContent = VERDICTS.find(v => score >= v.min).text;
-  const t = new Date(d.time).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", day: "2-digit", month: "short" });
+  $("breadth").textContent = breadth;
+
+  // per-index list
+  const box = $("rows");
+  box.textContent = "";
+  rows.slice().sort((a, b) => b.weight - a.weight).forEach(r => {
+    const row = document.createElement("div");
+    row.className = "row" + (r.key === view ? " sel" : "");
+    const lbl = document.createElement("span"); lbl.className = "lbl"; lbl.textContent = r.label;
+    const p = document.createElement("span"); p.className = "pct " + dirClass(r.pct); p.textContent = fmtPct(r.pct);
+    const bar = document.createElement("div"); bar.className = "bar";
+    const fill = document.createElement("div"); fill.className = "fill";
+    fill.style.width = r.score + "%";
+    fill.style.background = "hsl(" + Math.round(r.score * 1.2) + ",70%,52%)"; // 0 red -> 60 yellow -> 120 green
+    bar.appendChild(fill);
+    row.append(lbl, p, bar);
+    row.onclick = () => setView(r.key);
+    box.appendChild(row);
+  });
+
+  const t = new Date(Math.max(...d.indices.map(x => x.time))).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", day: "2-digit", month: "short" });
   const ist = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
   const mins = ist.getHours() * 60 + ist.getMinutes();
   const open = ist.getDay() >= 1 && ist.getDay() <= 5 && mins >= 555 && mins <= 930; // 9:15-15:30 IST
-  $("meta").textContent = (stale ? "Offline - showing last saved data [" + (window.fnError || "no reply") + "]. " : "") + (open ? "Market open" : "Market closed") + " | Data time " + t + " | Just for fun, not advice";
+  const missing = (d.failed && d.failed.length) ? " " + d.failed.length + " index(es) unavailable (" + d.failed.map(f => f.key).join(", ") + ")." : "";
+  $("meta").textContent = (d.stale ? "Offline - showing last saved data [" + (window.fnError || "no reply") + "]. " : "") + (open ? "Market open" : "Market closed") + " | Data time " + t + " | Just for fun, not advice." + missing;
+}
+
+function setView(k) {
+  view = k;
+  try { history.replaceState(null, "", k === "all" ? location.pathname : "?m=" + k); } catch (e) {}
+  if (data) render(data);
 }
 
 async function load() {
   $("meta").textContent = "Updating...";
   try {
     const d = await fetchData();
-    try { localStorage.setItem("mm_" + key, JSON.stringify(d)); } catch (e) {}
-    render(d, false);
+    try { localStorage.setItem("mm_all", JSON.stringify(d)); } catch (e) {}
+    render(d);
   } catch (e) {
     let saved = null;
-    try { saved = JSON.parse(localStorage.getItem("mm_" + key)); } catch (e2) {}
-    if (saved) render(saved, true);
+    try { saved = JSON.parse(localStorage.getItem("mm_all")); } catch (e2) {}
+    if (saved) { saved.stale = true; render(saved); }
     else { $("verdict").textContent = "Couldn't load data. Check internet and tap Refresh."; $("meta").textContent = ""; }
   }
 }
 
 $("refresh").onclick = load;
+$("back").onclick = () => setView("all");
 document.addEventListener("visibilitychange", () => { if (!document.hidden) load(); });
 setInterval(load, REFRESH_MINUTES * 60 * 1000);
 load();

@@ -13,10 +13,10 @@
   .card { width:100%; max-width:420px; background:var(--card); border-radius:24px; padding:20px 16px 18px; text-align:center; }
   .name { font-size:14px; letter-spacing:.12em; text-transform:uppercase; color:var(--muted); }
   svg { width:100%; height:auto; margin-top:8px; }
-  #needle { transform-origin:150px 150px; transition:transform 1.2s cubic-bezier(.2,.9,.3,1.2); transform:rotate(90deg); }
+  #needle { transform-origin:150px 150px; transition:transform 1.2s cubic-bezier(.2,.9,.3,1.2); transform:rotate(0deg); }
   .price { font-size:34px; font-weight:700; margin-top:4px; }
   .price small { font-size:16px; font-weight:500; color:var(--muted); }
-  .chg { font-size:20px; font-weight:600; margin-top:2px; }
+  .chg { font-size:16px; font-weight:500; margin-top:2px; color:var(--muted); }
   .verdict { font-size:20px; font-weight:600; margin:14px 6px 6px; line-height:1.3; }
   .breadth { font-size:14px; color:var(--muted); margin:2px 6px 0; }
   .meta { font-size:12px; color:var(--muted); margin-top:8px; }
@@ -27,9 +27,10 @@
   .row { display:grid; grid-template-columns:1fr auto; gap:2px 10px; align-items:center; padding:8px 6px; border-radius:10px; cursor:pointer; }
   .row:active, .row.sel { background:#1f232c; }
   .row .lbl { font-size:14px; }
-  .row .pct { font-size:14px; font-weight:600; font-variant-numeric:tabular-nums; }
+  .row .pct { font-size:13px; font-weight:600; font-variant-numeric:tabular-nums; color:var(--muted); }
   .row .bar { grid-column:1 / -1; height:4px; border-radius:2px; background:var(--track); overflow:hidden; }
   .row .fill { height:100%; border-radius:2px; transition:width .8s ease; }
+  .legend { font-size:11px; color:var(--muted); margin-top:6px; text-align:left; padding:0 6px; }
 </style>
 </head>
 <body>
@@ -53,8 +54,8 @@
     </g>
     <circle cx="150" cy="150" r="11" fill="#f2f4f8"/>
     <circle cx="150" cy="150" r="5" fill="#181b22"/>
-    <text x="14" y="172" font-size="11" fill="#8b93a3" text-anchor="start">Market up</text>
-    <text x="286" y="172" font-size="11" fill="#8b93a3" text-anchor="end">Market down</text>
+    <text x="14" y="172" font-size="11" fill="#8b93a3" text-anchor="start">Near highs</text>
+    <text x="286" y="172" font-size="11" fill="#8b93a3" text-anchor="end">Big discount</text>
   </svg>
 
   <div class="price" id="price">--</div>
@@ -62,35 +63,47 @@
   <div class="verdict" id="verdict">Loading...</div>
   <div class="breadth" id="breadth"></div>
   <div class="rows" id="rows"></div>
+  <div class="legend" id="legend"></div>
   <div class="meta" id="meta"></div>
   <button id="refresh">Refresh</button>
 </div>
 
 <script>
 // ---------- SETTINGS (edit these) ----------
-// key     : must match the key in netlify/functions/market.js
-// weight  : importance in the combined score (any numbers, they are re-scaled to 100%)
-// clamp   : +/- this % move = full needle swing for THAT index
-//           (volatile indices get a bigger clamp so they don't peg the gauge)
+// HOW THE SCORE WORKS (0-100, higher = better time to invest):
+//   For every index, three signals are scored 0-100 and blended:
+//     1) Drawdown from 52-week high : 0% below high = 0, `fall`% below high = 100
+//     2) Price vs 200-day average   : well above it = 0, well below it = 100
+//     3) Last 1 month return        : strong rise = 0, sharp fall = 100
+//   Then all indices are blended with their `weight`.
+//   Today's move is shown for info only and does NOT move the needle.
+//
+// key    : must match the key in netlify/functions/market.js
+// weight : importance in the combined score (any numbers, they are re-scaled to 100%)
+// fall   : drawdown (%) from the 52-week high that counts as a "full discount" for THAT index.
+//          Bigger for volatile indices (Metal) than for steady ones (Nifty 50).
 const INDICES = [
-  { key: "nifty",       symbol: "^NSEI",     label: "Nifty 50",       weight: 25, clamp: 2 },
-  { key: "sensex",      symbol: "^BSESN",    label: "Sensex",         weight: 15, clamp: 2 },
-  { key: "banknifty",   symbol: "^NSEBANK",  label: "Bank Nifty",     weight: 15, clamp: 2.5 },
-  { key: "niftynext50", symbol: "^NSMIDCP",  label: "Nifty Next 50",  weight: 10, clamp: 2.5 },
-  { key: "it",          symbol: "^CNXIT",    label: "Nifty IT",       weight: 10, clamp: 2.5 },
-  { key: "auto",        symbol: "^CNXAUTO",  label: "Nifty Auto",     weight: 8,  clamp: 2.5 },
-  { key: "pharma",      symbol: "^CNXPHARMA",label: "Nifty Pharma",   weight: 7,  clamp: 2.5 },
-  { key: "fmcg",        symbol: "^CNXFMCG",  label: "Nifty FMCG",     weight: 5,  clamp: 2 },
-  { key: "metal",       symbol: "^CNXMETAL", label: "Nifty Metal",    weight: 5,  clamp: 3 }
+  { key: "nifty",       symbol: "^NSEI",      label: "Nifty 50",      weight: 25, fall: 15 },
+  { key: "sensex",      symbol: "^BSESN",     label: "Sensex",        weight: 15, fall: 15 },
+  { key: "banknifty",   symbol: "^NSEBANK",   label: "Bank Nifty",    weight: 15, fall: 18 },
+  { key: "niftynext50", symbol: "^NSMIDCP",   label: "Nifty Next 50", weight: 10, fall: 18 },
+  { key: "it",          symbol: "^CNXIT",     label: "Nifty IT",      weight: 10, fall: 20 },
+  { key: "auto",        symbol: "^CNXAUTO",   label: "Nifty Auto",    weight: 8,  fall: 20 },
+  { key: "pharma",      symbol: "^CNXPHARMA", label: "Nifty Pharma",  weight: 7,  fall: 20 },
+  { key: "fmcg",        symbol: "^CNXFMCG",   label: "Nifty FMCG",    weight: 5,  fall: 15 },
+  { key: "metal",       symbol: "^CNXMETAL",  label: "Nifty Metal",   weight: 5,  fall: 25 }
 ];
+// How much each signal counts (re-scaled automatically if one is missing)
+const FACTOR_WEIGHTS = { drawdown: 60, dma: 25, month: 15 };
 const REFRESH_MINUTES = 15;     // auto refresh interval
-// Verdicts by score (checked from top). Score 100 = very happy (market down).
+const DIP_PCT = 5;              // an index "has dipped" if it is this % below its 52-week high
+// Verdicts by score (checked from top).
 const VERDICTS = [
-  { min: 75, text: "Market is down. Great time to invest! 😄" },
-  { min: 55, text: "Slight dip. Good time to invest 🙂" },
-  { min: 45, text: "Flat. Wait and watch 😐" },
-  { min: 25, text: "Slightly up. Be patient 🙁" },
-  { min: 0,  text: "Market is high. Not the best time 😢" }
+  { min: 75, text: "Big discount. Great time to invest! 😄" },
+  { min: 55, text: "Market has dipped. Good time to invest 🙂" },
+  { min: 40, text: "Fairly priced. Invest steadily (SIP) 😐" },
+  { min: 20, text: "Market is stretched. Be patient 🙁" },
+  { min: 0,  text: "Near all-time highs. Not the best time 😢" }
 ];
 // Open one index directly with the URL: ?m=sensex  or  ?m=banknifty
 // Default (no ?m=) is the combined view of all indices.
@@ -122,8 +135,9 @@ async function fetchData() {
   return fetchLiveAll();
 }
 
+// Same maths as the Netlify function, used only when the function is unavailable.
 async function fetchLiveOne(idx) {
-  const yahoo = "https://query1.finance.yahoo.com/v8/finance/chart/" + encodeURIComponent(idx.symbol) + "?interval=1d&range=5d";
+  const yahoo = "https://query1.finance.yahoo.com/v8/finance/chart/" + encodeURIComponent(idx.symbol) + "?interval=1d&range=1y";
   let lastErr;
   for (const r of routes) {
     try {
@@ -131,11 +145,20 @@ async function fetchLiveOne(idx) {
       if (!res.ok) throw new Error("HTTP " + res.status);
       const j = await res.json();
       const result = j.chart.result[0];
-      const closes = result.indicators.quote[0].close.filter(v => v != null);
+      const q = result.indicators.quote[0];
+      const closes = q.close.filter(v => v != null);
+      const highs = (q.high || []).filter(v => v != null);
       const price = result.meta.regularMarketPrice;
       const prev = closes[closes.length - 2];
       if (price == null || prev == null) throw new Error("No data");
-      return { key: idx.key, price, prev, time: result.meta.regularMarketTime * 1000 };
+      const last200 = closes.slice(-200);
+      return {
+        key: idx.key, price, prev,
+        high52: Math.max(price, ...(highs.length ? highs : closes)),
+        dma200: last200.length >= 100 ? last200.reduce((a, b) => a + b, 0) / last200.length : null,
+        close1m: closes.length > 22 ? closes[closes.length - 22] : null,
+        time: result.meta.regularMarketTime * 1000
+      };
     } catch (e) { lastErr = e; }
   }
   throw lastErr;
@@ -153,10 +176,29 @@ async function fetchLiveAll() {
 }
 
 // ---------- maths ----------
-// Score 0..100 for one move. Market down => high score (contrarian "happiness").
-function scoreFor(pct, clamp) {
-  const c = Math.max(-clamp, Math.min(clamp, pct));
-  return Math.round(50 - (c / clamp) * 50);
+const clamp01 = v => Math.max(0, Math.min(1, v));
+
+// One index -> score 0..100 (higher = better time to invest) + the numbers behind it.
+function scoreIndex(x, cfg) {
+  const dd = Math.max(0, (x.high52 - x.price) / x.high52 * 100);       // % below 52-week high
+  const parts = [{ w: FACTOR_WEIGHTS.drawdown, s: clamp01(dd / cfg.fall) * 100 }];
+
+  let dma = null;                                                       // % vs 200-day average
+  if (x.dma200) {
+    dma = (x.price / x.dma200 - 1) * 100;
+    const half = cfg.fall * 0.6;                                        // +half => 0, -half => 100
+    parts.push({ w: FACTOR_WEIGHTS.dma, s: clamp01(0.5 - dma / (2 * half)) * 100 });
+  }
+  let month = null;                                                     // 1-month return %
+  if (x.close1m) {
+    month = (x.price / x.close1m - 1) * 100;
+    const half = cfg.fall * 0.5;
+    parts.push({ w: FACTOR_WEIGHTS.month, s: clamp01(0.5 - month / (2 * half)) * 100 });
+  }
+  const wsum = parts.reduce((a, p) => a + p.w, 0);
+  const score = Math.round(parts.reduce((a, p) => a + p.s * p.w, 0) / wsum);
+  const today = (x.price - x.prev) / x.prev * 100;
+  return { dd, dma, month, today, score };
 }
 
 // Joins live data with the settings above. Indices missing from `d` are simply skipped,
@@ -164,23 +206,24 @@ function scoreFor(pct, clamp) {
 function enrich(d) {
   return d.indices.filter(x => BY_KEY[x.key]).map(x => {
     const cfg = BY_KEY[x.key];
-    const pct = (x.price - x.prev) / x.prev * 100;
-    return { ...x, label: cfg.label, weight: cfg.weight, clamp: cfg.clamp, pct, score: scoreFor(pct, cfg.clamp) };
+    return { ...x, label: cfg.label, weight: cfg.weight, ...scoreIndex(x, cfg) };
   });
 }
 
 function combine(rows) {
   const w = rows.reduce((s, r) => s + r.weight, 0);
-  const score = Math.round(rows.reduce((s, r) => s + r.score * r.weight, 0) / w);
-  const pct = rows.reduce((s, r) => s + r.pct * r.weight, 0) / w;
-  const down = rows.filter(r => r.pct < 0).length;
-  const up = rows.filter(r => r.pct > 0).length;
-  return { score, pct, down, up, flat: rows.length - down - up, total: rows.length };
+  const avg = f => rows.reduce((s, r) => s + f(r) * r.weight, 0) / w;
+  return {
+    score: Math.round(avg(r => r.score)),
+    dd: avg(r => r.dd),
+    today: avg(r => r.today),
+    dipped: rows.filter(r => r.dd >= DIP_PCT).length,
+    total: rows.length
+  };
 }
 
 // ---------- render ----------
 function fmtPct(p) { return (p > 0 ? "+" : "") + p.toFixed(2) + "%"; }
-function dirClass(p) { return p > 0 ? "up" : p < 0 ? "down" : ""; } // contrarian colours: down = green
 
 function render(d) {
   data = d;
@@ -188,41 +231,39 @@ function render(d) {
   if (!rows.length) throw new Error("No usable data");
   if (view !== "all" && !rows.find(r => r.key === view)) view = "all";
 
-  let score, pct, titleLine, priceLine, changeLine, breadth;
+  let score, titleLine, chgLine, breadth, today;
   if (view === "all") {
     const c = combine(rows);
-    score = c.score; pct = c.pct;
+    score = c.score; today = c.today;
     titleLine = "All indices (" + c.total + ")";
-    priceLine = score + '<small> / 100 happiness</small>';
-    changeLine = "Avg move " + fmtPct(c.pct);
-    breadth = c.down + " down · " + c.up + " up" + (c.flat ? " · " + c.flat + " flat" : "");
+    chgLine = "Avg " + c.dd.toFixed(1) + "% below 52-week high";
+    breadth = c.dipped + " of " + c.total + " indices are " + DIP_PCT + "%+ below their high · Today " + fmtPct(c.today);
     $("back").style.display = "none";
   } else {
     const r = rows.find(x => x.key === view);
-    score = r.score; pct = r.pct;
-    titleLine = r.label;
-    priceLine = r.price.toLocaleString("en-IN", { maximumFractionDigits: 2 });
-    changeLine = fmtPct(r.pct) + "  (" + (r.price - r.prev >= 0 ? "+" : "") + (r.price - r.prev).toFixed(2) + ")";
-    breadth = "Happiness score " + score + " / 100";
+    score = r.score; today = r.today;
+    titleLine = r.label + " · " + r.price.toLocaleString("en-IN", { maximumFractionDigits: 2 });
+    chgLine = r.dd.toFixed(1) + "% below 52-week high";
+    breadth = (r.dma != null ? fmtPct(r.dma) + " vs 200-day avg · " : "") +
+              (r.month != null ? fmtPct(r.month) + " in 1 month · " : "") + "Today " + fmtPct(r.today);
     $("back").style.display = "inline-block";
   }
 
   $("name").textContent = titleLine;
   $("needle").style.transform = "rotate(" + (score * 1.8) + "deg)";
-  $("price").innerHTML = priceLine;           // built only from numbers and static text above
-  $("chg").textContent = changeLine;
-  $("chg").className = "chg " + dirClass(pct);
+  $("price").innerHTML = score + '<small> / 100</small>';   // built only from a number and static text
+  $("chg").textContent = chgLine;
   $("verdict").textContent = VERDICTS.find(v => score >= v.min).text;
   $("breadth").textContent = breadth;
 
-  // per-index list
+  // per-index list: bar = that index's score, number = % below its 52-week high
   const box = $("rows");
   box.textContent = "";
   rows.slice().sort((a, b) => b.weight - a.weight).forEach(r => {
     const row = document.createElement("div");
     row.className = "row" + (r.key === view ? " sel" : "");
     const lbl = document.createElement("span"); lbl.className = "lbl"; lbl.textContent = r.label;
-    const p = document.createElement("span"); p.className = "pct " + dirClass(r.pct); p.textContent = fmtPct(r.pct);
+    const p = document.createElement("span"); p.className = "pct"; p.textContent = "-" + r.dd.toFixed(1) + "% from high";
     const bar = document.createElement("div"); bar.className = "bar";
     const fill = document.createElement("div"); fill.className = "fill";
     fill.style.width = r.score + "%";
@@ -232,6 +273,7 @@ function render(d) {
     row.onclick = () => setView(r.key);
     box.appendChild(row);
   });
+  $("legend").textContent = "Bar = how good a time to invest (longer & greener = better).";
 
   const t = new Date(Math.max(...d.indices.map(x => x.time))).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", day: "2-digit", month: "short" });
   const ist = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
@@ -251,11 +293,11 @@ async function load() {
   $("meta").textContent = "Updating...";
   try {
     const d = await fetchData();
-    try { localStorage.setItem("mm_all", JSON.stringify(d)); } catch (e) {}
+    try { localStorage.setItem("mm_v2", JSON.stringify(d)); } catch (e) {}
     render(d);
   } catch (e) {
     let saved = null;
-    try { saved = JSON.parse(localStorage.getItem("mm_all")); } catch (e2) {}
+    try { saved = JSON.parse(localStorage.getItem("mm_v2")); } catch (e2) {}
     if (saved) { saved.stale = true; render(saved); }
     else { $("verdict").textContent = "Couldn't load data. Check internet and tap Refresh."; $("meta").textContent = ""; }
   }

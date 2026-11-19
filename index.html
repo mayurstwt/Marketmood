@@ -4,210 +4,296 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0f1115">
+<meta name="description" content="Market Mood – a simple, transparent score that tells you whether Indian equities are expensive or offer a good entry point.">
 <title>Market Mood</title>
 <style>
-  :root { --bg:#0f1115; --card:#181b22; --text:#f2f4f8; --muted:#8b93a3; --green:#2ecc71; --red:#ff5a5f; --track:#252a35; }
+  :root {
+    --bg: #0f1115; --card: #181b22; --text: #f2f4f8; --muted: #8b93a3;
+    --green: #2ecc71; --red: #ff5a5f; --track: #252a35; --accent: #3b82f6;
+  }
+  [data-theme="light"] {
+    --bg: #f4f6f9; --card: #ffffff; --text: #111827; --muted: #6b7280;
+    --green: #059669; --red: #dc2626; --track: #e5e7eb; --accent: #2563eb;
+  }
   * { box-sizing: border-box; }
-  body { margin:0; min-height:100vh; background:var(--bg); color:var(--text);
-         font-family:-apple-system,Segoe UI,Roboto,sans-serif; display:flex; align-items:center; justify-content:center; padding:16px; }
-  .card { width:100%; max-width:420px; background:var(--card); border-radius:24px; padding:20px 16px 18px; text-align:center; }
-  .name { font-size:14px; letter-spacing:.12em; text-transform:uppercase; color:var(--muted); }
-  svg { width:100%; height:auto; margin-top:8px; }
-  #needle { transform-origin:150px 150px; transition:transform 1.2s cubic-bezier(.2,.9,.3,1.2); transform:rotate(0deg); }
-  .price { font-size:34px; font-weight:700; margin-top:4px; }
-  .price small { font-size:16px; font-weight:500; color:var(--muted); }
-  .chg { font-size:16px; font-weight:500; margin-top:2px; color:var(--muted); }
-  .verdict { font-size:20px; font-weight:600; margin:14px 6px 6px; line-height:1.3; }
-  .breadth { font-size:14px; color:var(--muted); margin:2px 6px 0; }
-  .meta { font-size:12px; color:var(--muted); margin-top:8px; }
-  .up { color:var(--red); } .down { color:var(--green); }
-  button { margin-top:12px; background:#252a35; color:var(--text); border:0; border-radius:12px; padding:10px 18px; font-size:14px; }
-  #back { display:none; background:none; color:var(--muted); margin:0 0 4px; padding:4px 8px; font-size:13px; }
-  .rows { margin-top:16px; text-align:left; }
-  .row { display:grid; grid-template-columns:1fr auto; gap:2px 10px; align-items:center; padding:8px 6px; border-radius:10px; cursor:pointer; }
-  .row:active, .row.sel { background:#1f232c; }
-  .row .lbl { font-size:14px; }
-  .row .pct { font-size:13px; font-weight:600; font-variant-numeric:tabular-nums; color:var(--muted); }
-  .row .bar { grid-column:1 / -1; height:4px; border-radius:2px; background:var(--track); overflow:hidden; }
-  .row .fill { height:100%; border-radius:2px; transition:width .8s ease; }
-  .legend { font-size:11px; color:var(--muted); margin-top:6px; text-align:left; padding:0 6px; }
+  body {
+    margin: 0; min-height: 100vh; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    display: flex; align-items: flex-start; justify-content: center;
+    padding: 20px 16px 40px;
+  }
+  .card {
+    width: 100%; max-width: 440px; background: var(--card);
+    border-radius: 24px; padding: 20px 16px 22px; text-align: center;
+    box-shadow: 0 4px 24px rgba(0,0,0,.12);
+  }
+  .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+  .name { font-size: 13px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  .theme-btn {
+    background: none; border: 1px solid var(--track); color: var(--muted);
+    border-radius: 8px; padding: 4px 10px; font-size: 12px; cursor: pointer;
+  }
+  svg { width: 100%; height: auto; margin-top: 4px; }
+  #needle { transform-origin: 150px 150px; transition: transform 1.1s cubic-bezier(.2,.9,.3,1.1); }
+  .price { font-size: 36px; font-weight: 700; margin-top: 2px; }
+  .price small { font-size: 16px; font-weight: 500; color: var(--muted); }
+  .chg { font-size: 15px; color: var(--muted); margin-top: 2px; }
+  .verdict { font-size: 18px; font-weight: 600; margin: 14px 4px 6px; line-height: 1.35; }
+  .sip { font-size: 14px; color: var(--muted); margin: 0 4px 8px; }
+  .warning {
+    background: color-mix(in srgb, var(--red) 12%, transparent);
+    color: var(--red); font-size: 13px; padding: 8px 12px; border-radius: 10px;
+    margin: 8px 0; display: none;
+  }
+  .breadth { font-size: 13px; color: var(--muted); margin: 4px 0 2px; }
+  .why {
+    text-align: left; font-size: 13px; color: var(--muted);
+    background: var(--track); border-radius: 12px; padding: 10px 12px; margin: 12px 0 4px;
+  }
+  .why strong { color: var(--text); }
+  .rows { margin-top: 14px; text-align: left; }
+  .row {
+    display: grid; grid-template-columns: 1fr auto; gap: 2px 10px;
+    align-items: center; padding: 8px 6px; border-radius: 10px; cursor: pointer;
+  }
+  .row:active, .row.sel { background: color-mix(in srgb, var(--track) 70%, transparent); }
+  .row .lbl { font-size: 14px; }
+  .row .pct { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--muted); }
+  .row .bar { grid-column: 1 / -1; height: 4px; border-radius: 2px; background: var(--track); overflow: hidden; }
+  .row .fill { height: 100%; border-radius: 2px; transition: width .7s ease; }
+  .legend { font-size: 11px; color: var(--muted); margin-top: 6px; text-align: left; padding: 0 6px; }
+  .meta { font-size: 11px; color: var(--muted); margin-top: 12px; line-height: 1.4; }
+  button#refresh, button#back {
+    margin-top: 12px; background: var(--track); color: var(--text);
+    border: 0; border-radius: 12px; padding: 10px 18px; font-size: 14px; cursor: pointer;
+  }
+  #back { display: none; background: none; color: var(--muted); margin: 0 0 6px; padding: 4px 8px; font-size: 13px; }
+  .disclaimer {
+    font-size: 11px; color: var(--muted); margin-top: 18px; padding-top: 12px;
+    border-top: 1px solid var(--track); text-align: left; line-height: 1.45;
+  }
+  .how { font-size: 12px; color: var(--muted); text-align: left; margin-top: 10px; }
+  .how summary { cursor: pointer; color: var(--accent); }
 </style>
 </head>
 <body>
 <div class="card">
-  <button id="back">&larr; All indices combined</button>
-  <div class="name" id="name">All indices</div>
+  <div class="topbar">
+    <div class="name" id="name">All indices</div>
+    <button class="theme-btn" id="themeBtn" aria-label="Toggle theme">Theme</button>
+  </div>
 
-  <svg viewBox="0 0 300 175" aria-label="Market mood gauge">
+  <button id="back" aria-label="Back to all indices">← All indices combined</button>
+
+  <svg viewBox="0 0 300 175" role="img" aria-label="Market mood gauge from near highs to big discount">
     <defs>
-      <linearGradient id="g" x1="0" x2="1" y1="0" y2="0">
+      <linearGradient id="g" x1="0" x2="1">
         <stop offset="0%" stop-color="#ff5a5f"/>
         <stop offset="50%" stop-color="#f5c542"/>
         <stop offset="100%" stop-color="#2ecc71"/>
       </linearGradient>
     </defs>
     <path d="M 30 150 A 120 120 0 0 1 270 150" fill="none" stroke="url(#g)" stroke-width="22" stroke-linecap="round"/>
-    <text x="30" y="26" font-size="28" text-anchor="middle">😢</text>
-    <text x="270" y="26" font-size="28" text-anchor="middle">😄</text>
+    <text x="30"  y="26" font-size="26" text-anchor="middle">😢</text>
+    <text x="270" y="26" font-size="26" text-anchor="middle">😄</text>
     <g id="needle">
-      <polygon points="40,150 150,144 150,156" fill="#f2f4f8"/>
+      <polygon points="40,150 150,144 150,156" fill="currentColor"/>
     </g>
-    <circle cx="150" cy="150" r="11" fill="#f2f4f8"/>
-    <circle cx="150" cy="150" r="5" fill="#181b22"/>
-    <text x="14" y="172" font-size="11" fill="#8b93a3" text-anchor="start">Near highs</text>
-    <text x="286" y="172" font-size="11" fill="#8b93a3" text-anchor="end">Big discount</text>
+    <circle cx="150" cy="150" r="11" fill="currentColor"/>
+    <circle cx="150" cy="150" r="5" fill="var(--card)"/>
+    <text x="14"  y="172" font-size="11" fill="var(--muted)" text-anchor="start">Near highs</text>
+    <text x="286" y="172" font-size="11" fill="var(--muted)" text-anchor="end">Big discount</text>
   </svg>
 
   <div class="price" id="price">--</div>
   <div class="chg" id="chg">--</div>
-  <div class="verdict" id="verdict">Loading...</div>
+  <div class="verdict" id="verdict">Loading…</div>
+  <div class="sip" id="sip"></div>
+  <div class="warning" id="warning"></div>
   <div class="breadth" id="breadth"></div>
+  <div class="why" id="why" style="display:none"></div>
+
   <div class="rows" id="rows"></div>
   <div class="legend" id="legend"></div>
   <div class="meta" id="meta"></div>
+
   <button id="refresh">Refresh</button>
+
+  <div class="disclaimer">
+    <strong>Not investment advice.</strong> This is a simple quantitative score based on price action only.
+    Past patterns do not guarantee future returns. Always do your own research and consider your risk tolerance.
+  </div>
+
+  <details class="how">
+    <summary>How the score works</summary>
+    <p style="margin:8px 0 0">
+      Score 0–100 (higher = better time to invest).<br>
+      • <strong>Drawdown</strong> from 52-week high (main factor)<br>
+      • Distance vs <strong>200-day average</strong><br>
+      • <strong>1-month return</strong> (oversold)<br>
+      • <strong>RSI(14)</strong> oversold signal<br>
+      • <strong>India VIX</strong> (high fear = better entry)<br>
+      Weights are re-scaled when some data is missing. Falling-knife warning appears if any major index is down &gt;10% in a month.
+    </p>
+  </details>
 </div>
 
 <script>
-// ---------- SETTINGS (edit these) ----------
-// HOW THE SCORE WORKS (0-100, higher = better time to invest):
-//   For every index, three signals are scored 0-100 and blended:
-//     1) Drawdown from 52-week high : 0% below high = 0, `fall`% below high = 100
-//     2) Price vs 200-day average   : well above it = 0, well below it = 100
-//     3) Last 1 month return        : strong rise = 0, sharp fall = 100
-//   Then all indices are blended with their `weight`.
-//   Today's move is shown for info only and does NOT move the needle.
-//
-// key    : must match the key in netlify/functions/market.js
-// weight : importance in the combined score (any numbers, they are re-scaled to 100%)
-// fall   : drawdown (%) from the 52-week high that counts as a "full discount" for THAT index.
-//          Bigger for volatile indices (Metal) than for steady ones (Nifty 50).
+// ===================== SETTINGS =====================
 const INDICES = [
-  { key: "nifty",       symbol: "^NSEI",      label: "Nifty 50",      weight: 25, fall: 15 },
-  { key: "sensex",      symbol: "^BSESN",     label: "Sensex",        weight: 15, fall: 15 },
-  { key: "banknifty",   symbol: "^NSEBANK",   label: "Bank Nifty",    weight: 15, fall: 18 },
-  { key: "niftynext50", symbol: "^NSMIDCP",   label: "Nifty Next 50", weight: 10, fall: 18 },
-  { key: "it",          symbol: "^CNXIT",     label: "Nifty IT",      weight: 10, fall: 20 },
-  { key: "auto",        symbol: "^CNXAUTO",   label: "Nifty Auto",    weight: 8,  fall: 20 },
-  { key: "pharma",      symbol: "^CNXPHARMA", label: "Nifty Pharma",  weight: 7,  fall: 20 },
-  { key: "fmcg",        symbol: "^CNXFMCG",   label: "Nifty FMCG",    weight: 5,  fall: 15 },
-  { key: "metal",       symbol: "^CNXMETAL",  label: "Nifty Metal",   weight: 5,  fall: 25 }
+  { key: "nifty",       label: "Nifty 50",       weight: 22, fall: 14 },
+  { key: "sensex",      label: "Sensex",         weight: 12, fall: 14 },
+  { key: "banknifty",   label: "Bank Nifty",     weight: 12, fall: 17 },
+  { key: "niftynext50", label: "Nifty Next 50",  weight: 10, fall: 17 },
+  { key: "midcap",      label: "Nifty Midcap",   weight: 12, fall: 20 },
+  { key: "smallcap",    label: "Nifty Smallcap", weight: 10, fall: 25 },
+  { key: "it",          label: "Nifty IT",       weight: 7,  fall: 20 },
+  { key: "auto",        label: "Nifty Auto",     weight: 5,  fall: 20 },
+  { key: "pharma",      label: "Nifty Pharma",   weight: 5,  fall: 18 },
+  { key: "fmcg",        label: "Nifty FMCG",     weight: 3,  fall: 14 },
+  { key: "metal",       label: "Nifty Metal",    weight: 2,  fall: 25 }
 ];
-// How much each signal counts (re-scaled automatically if one is missing)
-const FACTOR_WEIGHTS = { drawdown: 60, dma: 25, month: 15 };
-const REFRESH_MINUTES = 15;     // auto refresh interval
-const DIP_PCT = 5;              // an index "has dipped" if it is this % below its 52-week high
-// Verdicts by score (checked from top).
+
+const FACTOR_WEIGHTS = {
+  drawdown: 50,
+  dma: 18,
+  month: 12,
+  rsi: 10,
+  vix: 10
+};
+
+const REFRESH_MINUTES = 12;
+const DIP_PCT = 5;
+const FALLING_KNIFE_PCT = -10;   // 1-month return threshold
+
 const VERDICTS = [
-  { min: 75, text: "Big discount. Great time to invest! 😄" },
-  { min: 55, text: "Market has dipped. Good time to invest 🙂" },
-  { min: 40, text: "Fairly priced. Invest steadily (SIP) 😐" },
-  { min: 20, text: "Market is stretched. Be patient 🙁" },
-  { min: 0,  text: "Near all-time highs. Not the best time 😢" }
+  { min: 78, text: "Deep value zone. Excellent entry for long-term SIPs 😄" },
+  { min: 62, text: "Meaningful discount. Good time to invest 🙂" },
+  { min: 45, text: "Fair valuation. Continue regular SIPs 😐" },
+  { min: 28, text: "Market is elevated. Be selective 🙁" },
+  { min: 0,  text: "Near highs / expensive. Patience recommended 😢" }
 ];
-// Open one index directly with the URL: ?m=sensex  or  ?m=banknifty
-// Default (no ?m=) is the combined view of all indices.
-// -------------------------------------------
+
+const SIP_GUIDANCE = [
+  { min: 75, text: "Consider 1.5×–2× normal SIP amount" },
+  { min: 55, text: "Normal to 1.5× SIP is reasonable" },
+  { min: 35, text: "Stick to regular SIP amounts" },
+  { min: 0,  text: "Prefer SIPs over large lump-sums" }
+];
+// ====================================================
 
 const $ = id => document.getElementById(id);
 const BY_KEY = Object.fromEntries(INDICES.map(i => [i.key, i]));
 const qm = new URLSearchParams(location.search).get("m");
-let view = BY_KEY[qm] ? qm : "all";   // "all" or an index key
-let data = null;                      // { indices: [...], failed: [...], stale: bool }
+let view = BY_KEY[qm] ? qm : "all";
+let data = null;
+let scoreHistory = JSON.parse(localStorage.getItem("mm_score_hist") || "[]");
 
-const routes = [
-  u => u,
-  u => "https://corsproxy.io/?" + encodeURIComponent(u),
-  u => "https://api.allorigins.win/raw?url=" + encodeURIComponent(u)
-];
+// Theme
+const themeBtn = $("themeBtn");
+function applyTheme(t) {
+  document.documentElement.setAttribute("data-theme", t);
+  localStorage.setItem("mm_theme", t);
+  themeBtn.textContent = t === "light" ? "Dark" : "Light";
+}
+applyTheme(localStorage.getItem("mm_theme") || "dark");
+themeBtn.onclick = () => applyTheme(document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark");
 
 // ---------- data ----------
 async function fetchData() {
-  // 1) Preferred: Netlify Function on the same site (no CORS problem), all indices in one call
   try {
     const res = await fetch("/.netlify/functions/market?m=all", { cache: "no-store" });
     if (!res.ok) throw new Error("HTTP " + res.status);
     const d = await res.json();
     if (d && Array.isArray(d.indices) && d.indices.length) return d;
-    throw new Error("bad reply: " + JSON.stringify(d).slice(0, 120));
-  } catch (e) { window.fnError = String(e.message || e); }
-  // 2) Fallback: try Yahoo directly / via proxies, one request per index
-  return fetchLiveAll();
+    throw new Error("bad reply");
+  } catch (e) {
+    window.fnError = String(e.message || e);
+    // last-resort fallback – only direct Yahoo (no public CORS proxies)
+    return fetchLiveAll();
+  }
 }
 
-// Same maths as the Netlify function, used only when the function is unavailable.
 async function fetchLiveOne(idx) {
-  const yahoo = "https://query1.finance.yahoo.com/v8/finance/chart/" + encodeURIComponent(idx.symbol) + "?interval=1d&range=1y";
-  let lastErr;
-  for (const r of routes) {
-    try {
-      const res = await fetch(r(yahoo), { cache: "no-store" });
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      const j = await res.json();
-      const result = j.chart.result[0];
-      const q = result.indicators.quote[0];
-      const closes = q.close.filter(v => v != null);
-      const highs = (q.high || []).filter(v => v != null);
-      const price = result.meta.regularMarketPrice;
-      const prev = closes[closes.length - 2];
-      if (price == null || prev == null) throw new Error("No data");
-      const last200 = closes.slice(-200);
-      return {
-        key: idx.key, price, prev,
-        high52: Math.max(price, ...(highs.length ? highs : closes)),
-        dma200: last200.length >= 100 ? last200.reduce((a, b) => a + b, 0) / last200.length : null,
-        close1m: closes.length > 22 ? closes[closes.length - 22] : null,
-        time: result.meta.regularMarketTime * 1000
-      };
-    } catch (e) { lastErr = e; }
-  }
-  throw lastErr;
+  const yahoo = "https://query1.finance.yahoo.com/v8/finance/chart/" + encodeURIComponent(idx.symbol || idx.key) + "?interval=1d&range=1y";
+  // Note: this will usually fail from browser due to CORS. Kept only as extreme fallback.
+  const res = await fetch(yahoo, { cache: "no-store" });
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  const j = await res.json();
+  const result = j.chart.result[0];
+  const q = result.indicators.quote[0];
+  const closes = q.close.filter(v => v != null);
+  const highs = (q.high || []).filter(v => v != null);
+  const price = result.meta.regularMarketPrice;
+  const prev = closes[closes.length - 2];
+  if (price == null || prev == null) throw new Error("No data");
+  return {
+    key: idx.key, price, prev,
+    high52: Math.max(price, ...(highs.length ? highs : closes)),
+    dma200: closes.length >= 100 ? closes.slice(-200).reduce((a,b)=>a+b,0)/Math.min(200,closes.length) : null,
+    close1m: closes.length > 22 ? closes[closes.length-22] : null,
+    rsi14: null,
+    time: result.meta.regularMarketTime * 1000
+  };
 }
 
 async function fetchLiveAll() {
-  const results = await Promise.allSettled(INDICES.map(fetchLiveOne));
-  const indices = [], failed = [];
-  results.forEach((r, i) => {
-    if (r.status === "fulfilled") indices.push(r.value);
-    else failed.push({ key: INDICES[i].key, error: String(r.reason && r.reason.message || r.reason) });
-  });
-  if (!indices.length) throw new Error("No index could be loaded");
-  return { indices, failed, updated: Date.now() };
+  // Extremely limited – only works if CORS is somehow allowed
+  throw new Error("Netlify function unavailable and browser CORS blocks Yahoo");
 }
 
 // ---------- maths ----------
 const clamp01 = v => Math.max(0, Math.min(1, v));
 
-// One index -> score 0..100 (higher = better time to invest) + the numbers behind it.
 function scoreIndex(x, cfg) {
-  const dd = Math.max(0, (x.high52 - x.price) / x.high52 * 100);       // % below 52-week high
-  const parts = [{ w: FACTOR_WEIGHTS.drawdown, s: clamp01(dd / cfg.fall) * 100 }];
+  const dd = Math.max(0, (x.high52 - x.price) / x.high52 * 100);
+  const parts = [{ w: FACTOR_WEIGHTS.drawdown, s: clamp01(dd / cfg.fall) * 100, name: "Drawdown" }];
 
-  let dma = null;                                                       // % vs 200-day average
+  let dma = null;
   if (x.dma200) {
     dma = (x.price / x.dma200 - 1) * 100;
-    const half = cfg.fall * 0.6;                                        // +half => 0, -half => 100
-    parts.push({ w: FACTOR_WEIGHTS.dma, s: clamp01(0.5 - dma / (2 * half)) * 100 });
+    const half = cfg.fall * 0.55;
+    parts.push({ w: FACTOR_WEIGHTS.dma, s: clamp01(0.5 - dma / (2 * half)) * 100, name: "vs 200DMA" });
   }
-  let month = null;                                                     // 1-month return %
+
+  let month = null;
   if (x.close1m) {
     month = (x.price / x.close1m - 1) * 100;
-    const half = cfg.fall * 0.5;
-    parts.push({ w: FACTOR_WEIGHTS.month, s: clamp01(0.5 - month / (2 * half)) * 100 });
+    const half = cfg.fall * 0.45;
+    parts.push({ w: FACTOR_WEIGHTS.month, s: clamp01(0.5 - month / (2 * half)) * 100, name: "1-month" });
   }
+
+  if (x.rsi14 != null) {
+    // RSI 30 → strong buy signal, RSI 70 → weak
+    const rsiScore = clamp01((70 - x.rsi14) / 40) * 100;
+    parts.push({ w: FACTOR_WEIGHTS.rsi, s: rsiScore, name: "RSI" });
+  }
+
   const wsum = parts.reduce((a, p) => a + p.w, 0);
   const score = Math.round(parts.reduce((a, p) => a + p.s * p.w, 0) / wsum);
   const today = (x.price - x.prev) / x.prev * 100;
-  return { dd, dma, month, today, score };
+
+  return { dd, dma, month, rsi: x.rsi14, today, score, parts };
 }
 
-// Joins live data with the settings above. Indices missing from `d` are simply skipped,
-// and weights are re-scaled over what actually loaded.
 function enrich(d) {
-  return d.indices.filter(x => BY_KEY[x.key]).map(x => {
-    const cfg = BY_KEY[x.key];
-    return { ...x, label: cfg.label, weight: cfg.weight, ...scoreIndex(x, cfg) };
-  });
+  const vixRow = d.indices.find(x => x.key === "indiavix");
+  let vixBoost = 0;
+  if (vixRow) {
+    // India VIX typical range ~10–25. High VIX = better entry.
+    const v = vixRow.price;
+    vixBoost = clamp01((v - 12) / 18) * 100;   // 12 → 0, 30 → 100
+  }
+
+  return d.indices
+    .filter(x => BY_KEY[x.key])
+    .map(x => {
+      const cfg = BY_KEY[x.key];
+      const scored = scoreIndex(x, cfg);
+      // mild VIX influence on every index
+      const finalScore = Math.round(scored.score * 0.9 + vixBoost * 0.1);
+      return { ...x, label: cfg.label, weight: cfg.weight, ...scored, score: finalScore, vixBoost };
+    });
 }
 
 function combine(rows) {
@@ -218,7 +304,8 @@ function combine(rows) {
     dd: avg(r => r.dd),
     today: avg(r => r.today),
     dipped: rows.filter(r => r.dd >= DIP_PCT).length,
-    total: rows.length
+    total: rows.length,
+    falling: rows.filter(r => r.month != null && r.month < FALLING_KNIFE_PCT)
   };
 }
 
@@ -229,77 +316,128 @@ function render(d) {
   data = d;
   const rows = enrich(d);
   if (!rows.length) throw new Error("No usable data");
+
   if (view !== "all" && !rows.find(r => r.key === view)) view = "all";
 
-  let score, titleLine, chgLine, breadth, today;
+  let score, titleLine, chgLine, breadth, today, whyHtml = "";
+
   if (view === "all") {
     const c = combine(rows);
     score = c.score; today = c.today;
     titleLine = "All indices (" + c.total + ")";
     chgLine = "Avg " + c.dd.toFixed(1) + "% below 52-week high";
-    breadth = c.dipped + " of " + c.total + " indices are " + DIP_PCT + "%+ below their high · Today " + fmtPct(c.today);
+    breadth = c.dipped + " of " + c.total + " indices ≥" + DIP_PCT + "% below high · Today " + fmtPct(c.today);
+
+    // Falling knife
+    const warn = $("warning");
+    if (c.falling.length) {
+      warn.style.display = "block";
+      warn.textContent = "⚠ Falling knife: " + c.falling.map(r => r.label).join(", ") + " down >10% in 1 month. Consider staggering buys.";
+    } else {
+      warn.style.display = "none";
+    }
+
     $("back").style.display = "none";
   } else {
     const r = rows.find(x => x.key === view);
     score = r.score; today = r.today;
     titleLine = r.label + " · " + r.price.toLocaleString("en-IN", { maximumFractionDigits: 2 });
     chgLine = r.dd.toFixed(1) + "% below 52-week high";
-    breadth = (r.dma != null ? fmtPct(r.dma) + " vs 200-day avg · " : "") +
-              (r.month != null ? fmtPct(r.month) + " in 1 month · " : "") + "Today " + fmtPct(r.today);
+    breadth = (r.dma != null ? fmtPct(r.dma) + " vs 200DMA · " : "") +
+              (r.month != null ? fmtPct(r.month) + " 1M · " : "") +
+              (r.rsi != null ? "RSI " + r.rsi.toFixed(0) + " · " : "") +
+              "Today " + fmtPct(r.today);
+
+    whyHtml = r.parts.map(p => `<div>${p.name}: <strong>${Math.round(p.s)}</strong></div>`).join("");
     $("back").style.display = "inline-block";
+    $("warning").style.display = "none";
   }
 
+  // Smooth needle (simple 3-day average)
+  scoreHistory.push({ t: Date.now(), s: score });
+  scoreHistory = scoreHistory.filter(h => Date.now() - h.t < 4 * 86400000).slice(-6);
+  localStorage.setItem("mm_score_hist", JSON.stringify(scoreHistory));
+  const smooth = scoreHistory.length >= 2
+    ? Math.round(scoreHistory.reduce((a, h) => a + h.s, 0) / scoreHistory.length)
+    : score;
+
   $("name").textContent = titleLine;
-  $("needle").style.transform = "rotate(" + (score * 1.8) + "deg)";
-  $("price").innerHTML = score + '<small> / 100</small>';   // built only from a number and static text
+  $("needle").style.transform = "rotate(" + (smooth * 1.8) + "deg)";
+  $("price").innerHTML = score + '<small> / 100</small>';
   $("chg").textContent = chgLine;
   $("verdict").textContent = VERDICTS.find(v => score >= v.min).text;
+  $("sip").textContent = SIP_GUIDANCE.find(v => score >= v.min).text;
   $("breadth").textContent = breadth;
 
-  // per-index list: bar = that index's score, number = % below its 52-week high
+  const whyEl = $("why");
+  if (whyHtml) {
+    whyEl.style.display = "block";
+    whyEl.innerHTML = "<strong>Why this score</strong><br>" + whyHtml;
+  } else {
+    whyEl.style.display = "none";
+  }
+
+  // rows
   const box = $("rows");
   box.textContent = "";
   rows.slice().sort((a, b) => b.weight - a.weight).forEach(r => {
     const row = document.createElement("div");
     row.className = "row" + (r.key === view ? " sel" : "");
+    row.setAttribute("role", "button");
+    row.tabIndex = 0;
+
     const lbl = document.createElement("span"); lbl.className = "lbl"; lbl.textContent = r.label;
-    const p = document.createElement("span"); p.className = "pct"; p.textContent = "-" + r.dd.toFixed(1) + "% from high";
+    const p = document.createElement("span"); p.className = "pct";
+    p.textContent = "-" + r.dd.toFixed(1) + "%";
+
     const bar = document.createElement("div"); bar.className = "bar";
     const fill = document.createElement("div"); fill.className = "fill";
     fill.style.width = r.score + "%";
-    fill.style.background = "hsl(" + Math.round(r.score * 1.2) + ",70%,52%)"; // 0 red -> 60 yellow -> 120 green
+    fill.style.background = `hsl(${Math.round(r.score * 1.2)}, 70%, 48%)`;
     bar.appendChild(fill);
+
     row.append(lbl, p, bar);
     row.onclick = () => setView(r.key);
+    row.onkeydown = e => { if (e.key === "Enter" || e.key === " ") setView(r.key); };
     box.appendChild(row);
   });
-  $("legend").textContent = "Bar = how good a time to invest (longer & greener = better).";
+  $("legend").textContent = "Bar length & colour = investment attractiveness (longer/greener = better).";
 
-  const t = new Date(Math.max(...d.indices.map(x => x.time))).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", day: "2-digit", month: "short" });
+  // meta
+  const t = new Date(Math.max(...d.indices.map(x => x.time || 0))).toLocaleString("en-IN", {
+    timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", day: "2-digit", month: "short"
+  });
   const ist = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
   const mins = ist.getHours() * 60 + ist.getMinutes();
-  const open = ist.getDay() >= 1 && ist.getDay() <= 5 && mins >= 555 && mins <= 930; // 9:15-15:30 IST
-  const missing = (d.failed && d.failed.length) ? " " + d.failed.length + " index(es) unavailable (" + d.failed.map(f => f.key).join(", ") + ")." : "";
-  $("meta").textContent = (d.stale ? "Offline - showing last saved data [" + (window.fnError || "no reply") + "]. " : "") + (open ? "Market open" : "Market closed") + " | Data time " + t + " | Just for fun, not advice." + missing;
+  const open = ist.getDay() >= 1 && ist.getDay() <= 5 && mins >= 555 && mins <= 930;
+  const missing = (d.failed && d.failed.length)
+    ? ` · ${d.failed.length} index(es) unavailable`
+    : "";
+  $("meta").textContent = (d.stale ? "Showing cached data. " : "") +
+    (open ? "Market open" : "Market closed") +
+    " · Data " + t + " IST" + missing + " · Not advice";
 }
 
 function setView(k) {
   view = k;
-  try { history.replaceState(null, "", k === "all" ? location.pathname : "?m=" + k); } catch (e) {}
+  try { history.replaceState(null, "", k === "all" ? location.pathname : "?m=" + k); } catch(e){}
   if (data) render(data);
 }
 
 async function load() {
-  $("meta").textContent = "Updating...";
+  $("meta").textContent = "Updating…";
   try {
     const d = await fetchData();
-    try { localStorage.setItem("mm_v2", JSON.stringify(d)); } catch (e) {}
+    try { localStorage.setItem("mm_v3", JSON.stringify(d)); } catch(e){}
     render(d);
   } catch (e) {
     let saved = null;
-    try { saved = JSON.parse(localStorage.getItem("mm_v2")); } catch (e2) {}
+    try { saved = JSON.parse(localStorage.getItem("mm_v3")); } catch(e2){}
     if (saved) { saved.stale = true; render(saved); }
-    else { $("verdict").textContent = "Couldn't load data. Check internet and tap Refresh."; $("meta").textContent = ""; }
+    else {
+      $("verdict").textContent = "Could not load data.";
+      $("meta").textContent = String(e.message || e);
+    }
   }
 }
 

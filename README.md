@@ -3,7 +3,7 @@
 A simple, transparent **Indian market valuation score** (0–100).  
 Higher score = better long-term entry point.
 
-Live at: *your Netlify URL*
+Live at: https://msxmood.netlify.app/
 
 ## How the score works
 
